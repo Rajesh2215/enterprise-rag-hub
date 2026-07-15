@@ -2,10 +2,11 @@ import express, { type Request, type Response, type NextFunction } from 'express
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
+import { connectDB } from './db/connection.js';
 import apiRouter from './routes/api.js';
+import { env } from './config/env.js';
 
 const app = express();
-const PORT = process.env.PORT || 3000;
 
 app.use(helmet());
 app.use(cors());
@@ -24,6 +25,11 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
   res.status(500).json({ error: 'Internal Server Error' });
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-});
+async function start() {
+  await connectDB();
+  app.listen(env.PORT, () => {
+    console.log(`Server running on http://localhost:${env.PORT}`);
+  });
+}
+
+start().catch(console.error);

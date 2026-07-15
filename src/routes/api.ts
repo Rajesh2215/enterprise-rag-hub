@@ -1,9 +1,11 @@
 import { Router, type Request, type Response } from 'express';
+import authRouter from './auth.routes.js';
 
 const router = Router();
 
-// Health check
-router.get('/health', (req: Request, res: Response) => {
+router.use('/auth', authRouter);
+
+router.get('/health', (_req: Request, res: Response) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
