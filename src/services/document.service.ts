@@ -2,6 +2,8 @@ import path from 'path';
 import fs from 'fs';
 import { documentRepo } from '../repositories/document.repository.js';
 import { chatbotRepo } from '../repositories/chatbot.repository.js';
+import { PDFParse } from 'pdf-parse';
+import { cleanExtractedText } from '../utils/textCleaner.js';
 
 export const documentService = {
   async upload(
@@ -22,10 +24,14 @@ export const documentService = {
       fileName: file.filename,
       originalFileName: file.originalname,
       fileSize: file.size,
+      fileType: file.mimetype,
       status: 'PROCESSING',
     });
 
-    return doc;
+    console.log('Created doc:', doc);
+    const filePath = path.join(path.resolve('uploads'), file.filename);
+
+    return documentService.processDocument(doc.id, filePath)
   },
 
   async getAll(chatbotId: string, userId: string) {
@@ -59,9 +65,32 @@ export const documentService = {
       fs.unlinkSync(filePath);
     }
 
-    // TODO: Delete vectors from Qdrant by documentId
-
     const deleted = await documentRepo.delete(documentId, chatbotId);
     if (!deleted) throw new Error('Document not found');
   },
+
+  async processDocument(documentId: string, filePath: string) {
+    try {
+      console.log(`Starting parsing for document: ${documentId}`);
+
+      const dataBuffer = fs.readFileSync(filePath);
+      const pdfData = new PDFParse({ data: dataBuffer });
+      const parsedText = await pdfData.getText();
+
+      const cleanedText = cleanExtractedText(parsedText.text);
+      console.log(`Cleaned text: ${cleanedText.length} characters`);
+
+      const doc = await documentRepo.update(documentId, {
+        status: 'READY',
+        totalPages: parsedText?.total || 0,
+      });
+
+      console.log(` Document ${documentId} processed successfully.`);
+      return doc
+    } catch (error) {
+      console.error(`Error processing document ${documentId}:`, error);
+      await documentRepo.update(documentId, { status: 'FAILED' });
+
+    }
+  }
 };

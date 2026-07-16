@@ -7,6 +7,8 @@ export interface DocumentDoc {
   fileName: string;
   originalFileName: string;
   fileSize: number;
+  fileType: string;
+  totalPages?: number | null;
   status: 'PROCESSING' | 'READY' | 'FAILED';
   uploadedAt: Date;
   createdAt: Date;
@@ -21,6 +23,8 @@ function toDoc(raw: InstanceType<typeof DocumentModel>): DocumentDoc {
     fileName: raw.fileName,
     originalFileName: raw.originalFileName,
     fileSize: raw.fileSize,
+    fileType: raw.fileType,
+    totalPages: raw.totalPages ?? null,
     status: raw.status as 'PROCESSING' | 'READY' | 'FAILED',
     uploadedAt: raw.uploadedAt as Date,
     createdAt: (raw as any).createdAt as Date,
@@ -35,6 +39,8 @@ export const documentRepo = {
     fileName: string;
     originalFileName: string;
     fileSize: number;
+    totalPages?: number | null;
+    fileType: string;
     status: 'PROCESSING' | 'READY' | 'FAILED';
   }): Promise<DocumentDoc> {
     const doc = await DocumentModel.create({ ...data, uploadedAt: new Date() });
@@ -50,6 +56,19 @@ export const documentRepo = {
     const doc = await DocumentModel.findOne({ _id: id, chatbotId });
     return doc ? toDoc(doc) : null;
   },
+
+  async update(
+    id: string,
+    updateData: { status?: 'PROCESSING' | 'READY' | 'FAILED'; totalPages?: number }
+  ): Promise<DocumentDoc | null> {
+    const doc = await DocumentModel.findByIdAndUpdate(
+      id,
+      { $set: updateData },
+      { new: true }
+    );
+    return doc ? toDoc(doc) : null;
+  },
+
 
   async delete(id: string, chatbotId: string): Promise<boolean> {
     const result = await DocumentModel.findOneAndDelete({ _id: id, chatbotId });

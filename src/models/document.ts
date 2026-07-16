@@ -6,6 +6,8 @@ const documentSchema = new mongoose.Schema(
     title: { type: String, required: true, trim: true },
     fileName: { type: String, required: true },
     originalFileName: { type: String, required: true },
+    fileType: { type: String, required: true },
+    totalPages: { type: Number },
     fileSize: { type: Number, required: true },
     status: {
       type: String,
