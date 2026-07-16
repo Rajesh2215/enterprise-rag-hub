@@ -5,4 +5,10 @@ export const env = {
   JWT_REFRESH_SECRET: process.env['JWT_REFRESH_SECRET'] ?? 'dev-refresh-secret-change-me',
   JWT_EXPIRES_IN: process.env['JWT_EXPIRES_IN'] ?? '15m',
   JWT_REFRESH_EXPIRES_IN: process.env['JWT_REFRESH_EXPIRES_IN'] ?? '7d',
+
+  // Pinecone
+  PINECONE_API_KEY: process.env['PINECONE_API_KEY'] ?? '',
+  PINECONE_INDEX_NAME: process.env['PINECONE_INDEX_NAME'] ?? 'enterprise-knowledge-hub',
+  PINECONE_CLOUD: process.env['PINECONE_CLOUD'] ?? 'aws',
+  PINECONE_REGION: process.env['PINECONE_REGION'] ?? 'us-east-1',
 };

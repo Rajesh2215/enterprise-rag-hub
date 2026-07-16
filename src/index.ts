@@ -1,8 +1,10 @@
+import 'dotenv/config';
 import express, { type Request, type Response, type NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import { connectDB } from './db/connection.js';
+import { initialisePineconeIndex } from './config/pinecone.js';
 import apiRouter from './routes/api.js';
 import { env } from './config/env.js';
 
@@ -27,6 +29,7 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
 
 async function start() {
   await connectDB();
+  await initialisePineconeIndex(768, 'cosine');
   app.listen(env.PORT, () => {
     console.log(`Server running on http://localhost:${env.PORT}`);
   });
