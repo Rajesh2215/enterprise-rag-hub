@@ -4,6 +4,7 @@ import { chatbotRepo } from '../repositories/chatbot.repository.js';
 import { getPineconeIndex } from '../config/pinecone.js';
 import { embedText } from '../utils/embeddings.js';
 import { env } from '../config/env.js';
+import { rerankDocuments } from '../utils/rerank.js';
 
 // Initialize the Gemini client
 const genAI = new GoogleGenerativeAI(env.GEMINI_API_KEY);
@@ -25,17 +26,19 @@ export const chatService = {
     const index = getPineconeIndex();
     const queryResponse = await index.namespace(chatbotId).query({
       vector: queryEmbedding,
-      topK: 5,
+      topK: 15,
       includeMetadata: true,
     });
 
-    // 4. Extract text from the matched vector metadata
-    const context = queryResponse.matches
+    // 4. Extract candidate texts
+    const candidateTexts = queryResponse.matches
       ?.map((match) => match.metadata?.text)
-      .filter(Boolean)
-      .join('\n\n') || '';
+      .filter(Boolean) as string[] || [];
 
-    console.log(`🎯 Retrieved ${queryResponse.matches?.length || 0} context chunks from Pinecone.`);
+    console.log(`🎯 Retrieved ${candidateTexts.length} candidates from Pinecone.`);
+
+    const rerankedContexts = await rerankDocuments(message, candidateTexts, 5);
+    const context = rerankedContexts.join('\n\n')
 
     // 5. Structure the Grounded Prompt for Gemini
     // We pass the System Prompt (persona) and Retrieved Context as instructions

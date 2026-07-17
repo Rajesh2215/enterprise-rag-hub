@@ -13,4 +13,6 @@ export const env = {
   PINECONE_REGION: process.env['PINECONE_REGION'] ?? 'us-east-1',
 
   GEMINI_API_KEY: process.env['GEMINI_API_KEY'] ?? '',
+
+  COHERE_API_KEY: process.env['COHERE_API_KEY'] ?? '',
 };
