@@ -38,10 +38,15 @@ export const chatbotRepo = {
     return chatbots.map(toDoc);
   },
 
-  async findById(id: string): Promise<ChatbotDoc | null> {
-    const chatbot = await ChatbotModel.findById(id);
+  async findById(id: string, userId?: string): Promise<ChatbotDoc | null> {
+    const query: any = { _id: id };
+    if (userId) {
+      query.userId = userId;
+    }
+    const chatbot = await ChatbotModel.findOne(query);
     return chatbot ? toDoc(chatbot) : null;
   },
+
 
   async update(
     id: string,

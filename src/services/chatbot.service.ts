@@ -10,9 +10,8 @@ export const chatbotService = {
   },
 
   async getById(id: string, userId: string) {
-    const chatbot = await chatbotRepo.findById(id);
-    if (!chatbot) throw new Error('Chatbot not found');
-    if (chatbot.userId !== userId) throw new Error('Forbidden');
+    const chatbot = await chatbotRepo.findById(id, userId);
+    if (!chatbot) throw new Error('Chatbot not found or forbidden');
     return chatbot;
   },
 
