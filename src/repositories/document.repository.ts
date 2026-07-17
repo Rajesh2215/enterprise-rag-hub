@@ -64,7 +64,7 @@ export const documentRepo = {
     const doc = await DocumentModel.findByIdAndUpdate(
       id,
       { $set: updateData },
-      { new: true }
+      { returnDocument: "after" }
     );
     return doc ? toDoc(doc) : null;
   },

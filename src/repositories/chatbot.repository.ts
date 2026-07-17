@@ -51,7 +51,7 @@ export const chatbotRepo = {
     const chatbot = await ChatbotModel.findOneAndUpdate(
       { _id: id, userId },
       { $set: fields },
-      { new: true }
+      { returnDocument: "after" }
     );
     return chatbot ? toDoc(chatbot) : null;
   },

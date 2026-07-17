@@ -13,6 +13,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@pinecone-database/pinecone": "^8.0.0",
     "@types/multer": "^2.2.0",
     "@types/pdf-parse": "^1.1.5",

@@ -4,6 +4,9 @@ import { documentRepo } from '../repositories/document.repository.js';
 import { chatbotRepo } from '../repositories/chatbot.repository.js';
 import { PDFParse } from 'pdf-parse';
 import { cleanExtractedText } from '../utils/textCleaner.js';
+import { chunkText } from '../utils/textChunker.js';
+import { embedChunks } from '../utils/embeddings.js';
+import { getPineconeIndex } from '../config/pinecone.js';
 
 export const documentService = {
   async upload(
@@ -28,7 +31,6 @@ export const documentService = {
       status: 'PROCESSING',
     });
 
-    console.log('Created doc:', doc);
     const filePath = path.join(path.resolve('uploads'), file.filename);
 
     return documentService.processDocument(doc.id, filePath)
@@ -54,6 +56,14 @@ export const documentService = {
     const chatbot = await chatbotRepo.findById(chatbotId);
     if (!chatbot) throw new Error('Chatbot not found');
     if (chatbot.userId.toString() !== userId) throw new Error('Forbidden');
+
+    // ─── Delete vectors from Pinecone ───
+    const index = getPineconeIndex();
+    await index.namespace(chatbotId).deleteMany({
+      filter: {
+        documentId: { '$eq': documentId }
+      }
+    });
 
     const doc = await documentRepo.findById(documentId, chatbotId);
     if (!doc) throw new Error('Document not found');
@@ -86,6 +96,37 @@ export const documentService = {
       });
 
       console.log(` Document ${documentId} processed successfully.`);
+
+      if (!doc) {
+        throw new Error(`Failed to update status for document ${documentId}`);
+      }
+
+      // ─── Chunking the cleaned text ───
+      const chunks = chunkText(cleanedText, { chunkSize: 500, chunkOverlap: 50 });
+      console.log(`Generated ${chunks.length} chunks`);
+
+      const embeddings = await embedChunks(chunks);
+      console.log(`✅ Generated ${embeddings.length} embeddings.`);
+      if (embeddings.length > 0) {
+        console.log(`Vector dimension check: ${embeddings[0]?.length} numbers`); // Should print 768!
+      }
+
+      const vectors = chunks.map((chunk, index) => ({
+        id: `doc_${documentId}_chunk_${index}`, // Unique vector ID
+        values: embeddings[index]!,              // The 768 float array
+        metadata: {
+          text: chunk,                          // Cleaned text chunk
+          documentId,
+          chatbotId: doc.chatbotId,
+        },
+      }));
+      // ─── Upsert into Pinecone Namespace ───
+      console.log(`⏳ Storing ${vectors.length} vectors in Pinecone namespace: ${doc.chatbotId}...`);
+      const index = getPineconeIndex();
+      await index.namespace(doc.chatbotId).upsert({ records: vectors });
+
+      console.log(`✅ Storing in Pinecone complete.`);
+
       return doc
     } catch (error) {
       console.error(`Error processing document ${documentId}:`, error);

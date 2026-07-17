@@ -11,4 +11,6 @@ export const env = {
   PINECONE_INDEX_NAME: process.env['PINECONE_INDEX_NAME'] ?? 'enterprise-knowledge-hub',
   PINECONE_CLOUD: process.env['PINECONE_CLOUD'] ?? 'aws',
   PINECONE_REGION: process.env['PINECONE_REGION'] ?? 'us-east-1',
+
+  GEMINI_API_KEY: process.env['GEMINI_API_KEY'] ?? '',
 };
