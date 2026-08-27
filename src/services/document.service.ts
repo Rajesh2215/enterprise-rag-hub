@@ -115,11 +115,14 @@ export const documentService = {
         id: `doc_${documentId}_chunk_${index}`, // Unique vector ID
         values: embeddings[index]!,              // The 768 float array
         metadata: {
-          text: chunk,                          // Cleaned text chunk
+          text: chunk,
           documentId,
           chatbotId: doc.chatbotId,
+          documentTitle: doc.title,
+          chunkIndex: index,
         },
       }));
+
       // ─── Upsert into Pinecone Namespace ───
       console.log(`⏳ Storing ${vectors.length} vectors in Pinecone namespace: ${doc.chatbotId}...`);
       const index = getPineconeIndex();
