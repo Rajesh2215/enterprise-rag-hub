@@ -6,6 +6,7 @@ import { embedText } from '../utils/embeddings.js';
 import { env } from '../config/env.js';
 import { rerankDocuments } from '../utils/rerank.js';
 import { memoryService } from './memory.service.js';
+import { rewriteQuery } from '../utils/queryRewriter.js';
 
 // Initialize the Gemini client
 const genAI = new GoogleGenerativeAI(env.GEMINI_API_KEY);
@@ -24,18 +25,25 @@ export const chatService = {
   ): Promise<ChatResult> {
     // 1. Ensure sessionId exists
     const activeSessionId = sessionId || crypto.randomUUID();
+
     // 2. Verify chatbot exists and belongs to the user
     const chatbot = await chatbotRepo.findById(chatbotId, userId);
     if (!chatbot) {
       throw new Error('Chatbot not found');
     }
+
     // 3. Fetch recent conversation history from Redis memory
     const history = await memoryService.getHistory(activeSessionId);
     console.log(`🧠 Loaded ${history.length} previous messages for session: ${activeSessionId}`);
-    // 4. Convert user's question into a 768-dimensional vector
-    console.log(`⏳ Embedding user question...`);
-    const queryEmbedding = await embedText(message);
-    // 5. Search Pinecone for top 15 closest candidate chunks
+
+    // 4. Rewrite query to be standalone if conversation history exists
+    const searchQuery = await rewriteQuery(message, history);
+
+    // 5. Convert standalone search query into a 768-dimensional vector
+    console.log(`⏳ Embedding search query: "${searchQuery}"...`);
+    const queryEmbedding = await embedText(searchQuery);
+
+    // 6. Search Pinecone for top 15 closest candidate chunks
     console.log(`⏳ Querying Pinecone namespace: ${chatbotId}...`);
     const index = getPineconeIndex();
     const queryResponse = await index.namespace(chatbotId).query({
@@ -43,14 +51,17 @@ export const chatService = {
       topK: 15,
       includeMetadata: true,
     });
-    // 6. Extract candidate texts & re-rank to top 5
+
+    // 7. Extract candidate texts & re-rank using the standalone query
     const candidateTexts =
       queryResponse.matches
         ?.map((match) => match.metadata?.text)
         .filter(Boolean) as string[] || [];
+
     console.log(`🎯 Retrieved ${candidateTexts.length} candidates from Pinecone.`);
-    const rerankedContexts = await rerankDocuments(message, candidateTexts, 5);
+    const rerankedContexts = await rerankDocuments(searchQuery, candidateTexts, 5);
     const context = rerankedContexts.join('\n\n');
+
     // 7. Structure the Grounded Prompt for Gemini
     const systemInstruction = `
       You are a helpful AI assistant.

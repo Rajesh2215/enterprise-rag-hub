@@ -22,10 +22,10 @@ export const chatController = {
     try {
       const { chatbotId } = req.params;
       const { message, sessionId } = result.data;
-      if (!chatbotId) {
-        throw new Error('Chatbot ID is required');
+      if (!chatbotId || typeof chatbotId !== 'string') {
+        res.status(400).json({ error: 'Chatbot ID is required' });
+        return;
       }
-      // Delegate chat logic to chatService
       const chatResult = await chatService.chat(
         chatbotId,
         message,
@@ -49,7 +49,7 @@ export const chatController = {
   async getHistory(req: AuthRequest, res: Response) {
     try {
       const { sessionId } = req.params;
-      if (!sessionId) {
+      if (!sessionId || typeof sessionId !== 'string') {
         res.status(400).json({ error: 'Session ID is required' });
         return;
       }
@@ -63,7 +63,7 @@ export const chatController = {
   async clearHistory(req: AuthRequest, res: Response) {
     try {
       const { sessionId } = req.params;
-      if (!sessionId) {
+      if (!sessionId || typeof sessionId !== 'string') {
         res.status(400).json({ error: 'Session ID is required' });
         return;
       }
