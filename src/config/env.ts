@@ -15,4 +15,7 @@ export const env = {
   GEMINI_API_KEY: process.env['GEMINI_API_KEY'] ?? '',
 
   COHERE_API_KEY: process.env['COHERE_API_KEY'] ?? '',
+
+  REDIS_URL: process.env['REDIS_URL'] ?? 'redis://localhost:6379',
+  REDIS_SESSION_TTL: Number(process.env['REDIS_SESSION_TTL'] ?? 86400), // 24 hours
 };
