@@ -7,6 +7,8 @@ import { env } from '../config/env.js';
 import { rerankDocuments } from '../utils/rerank.js';
 import { memoryService } from './memory.service.js';
 import { rewriteQuery } from '../utils/queryRewriter.js';
+import { BM25Index, reciprocalRankFusion, type SearchCandidate } from '../utils/bm25.js';
+import { chunkRepo } from '../repositories/chunk.repository.js';
 
 // Initialize the Gemini client
 const genAI = new GoogleGenerativeAI(env.GEMINI_API_KEY);
@@ -57,42 +59,69 @@ export const chatService = {
     // 4. Rewrite query to be standalone if conversation history exists
     const searchQuery = await rewriteQuery(message, history);
 
-    // 5. Convert standalone search query into a 768-dimensional vector
-    console.log(`⏳ Embedding search query: "${searchQuery}"...`);
-    const queryEmbedding = await embedText(searchQuery);
 
-    // 6. Search Pinecone for top 15 closest candidate chunks
-    console.log(`⏳ Querying Pinecone namespace: ${chatbotId}...`);
-    const index = getPineconeIndex();
-    const queryResponse = await index.namespace(chatbotId).query({
-      vector: queryEmbedding,
-      topK: 15,
-      includeMetadata: true,
-    });
+    // ─── 5. HYBRID SEARCH: Run Dense (Pinecone) & Sparse (BM25) in parallel ───
+    console.log(`⏳ Running Hybrid Search (Dense + BM25) for query: "${searchQuery}"...`);
+    const [denseCandidates, sparseCandidates] = await Promise.all([
+      (async (): Promise<SearchCandidate[]> => {
+        const queryEmbedding = await embedText(searchQuery);
+        const index = getPineconeIndex();
+        const queryResponse = await index.namespace(chatbotId).query({
+          vector: queryEmbedding,
+          topK: 15,
+          includeMetadata: true,
+        });
 
-    // 7. Extract candidate metadata from Pinecone
-    const candidateMatches = (queryResponse.matches || []).filter(
-      (m) => m.metadata && typeof m.metadata['text'] === 'string'
-    );
-    const candidateTexts = candidateMatches.map(
-      (m) => m.metadata!['text'] as string
-    );
-    console.log(`🎯 Retrieved ${candidateTexts.length} candidates from Pinecone.`);
+        return (queryResponse.matches || [])
+          .filter((m) => m.metadata && typeof m.metadata['text'] === 'string')
+          .map((m) => ({
+            id: m.id,
+            text: m.metadata!['text'] as string,
+            documentId: (m.metadata!['documentId'] as string) || 'unknown',
+            documentTitle: (m.metadata!['documentTitle'] as string) || 'Document',
+            chunkIndex: m.metadata!['chunkIndex'] as number | undefined,
+          }));
 
-    // 8. Re-rank using standalone query
+      })(),
+
+      // B. Sparse Search (BM25 over MongoDB Chunks)
+      (async (): Promise<SearchCandidate[]> => {
+        const mongoChunks = await chunkRepo.findAllByChatbot(chatbotId);
+        if (mongoChunks.length === 0) return [];
+
+        const bm25 = new BM25Index(mongoChunks);
+        const bm25Matches = bm25.search(searchQuery, 15);
+
+        return bm25Matches.map((doc) => ({
+          id: doc.id,
+          text: doc.text,
+          documentId: doc.documentId,
+          documentTitle: doc.documentTitle,
+          chunkIndex: doc.chunkIndex,
+        }));
+
+      })()
+    ])
+
+    console.log(`🔍 Dense returned ${denseCandidates.length}, BM25 returned ${sparseCandidates.length} candidates.`);
+
+    // ─── 6. Reciprocal Rank Fusion (RRF) ───
+    const fusedCandidates = reciprocalRankFusion(denseCandidates, sparseCandidates, 60);
+    console.log(`🔀 RRF merged into ${fusedCandidates.length} unique candidates.`);
+
+    const candidateTexts = fusedCandidates.map((c) => c.text);
+    // ─── 7. Re-rank with Cohere Cross-Encoder ───
     const rerankedResults = await rerankDocuments(searchQuery, candidateTexts, 5);
 
-    // 9. Build structured source citations and prompt context
+    // ─── 8. Build structured source citations and prompt context 
     const sources: SourceCitation[] = [];
     const contextBlocks: string[] = [];
     rerankedResults.forEach((res, i) => {
       const sourceNumber = i + 1;
-      const originalMatch = candidateMatches[res.originalIndex];
-      const docId = (originalMatch?.metadata?.['documentId'] as string) || 'unknown';
-      const docTitle =
-        (originalMatch?.metadata?.['documentTitle'] as string) ||
-        `Document (${docId})`;
-      const chunkIdx = originalMatch?.metadata?.['chunkIndex'] as number | undefined;
+      const originalMatch = fusedCandidates[res.originalIndex];
+      const docId = originalMatch?.documentId || 'unknown';
+      const docTitle = originalMatch?.documentTitle || `Document (${docId})`;
+      const chunkIdx = originalMatch?.chunkIndex;
       sources.push({
         sourceNumber,
         documentId: docId,
@@ -108,21 +137,21 @@ export const chatService = {
 
     const context = contextBlocks.join('\n\n');
 
-    // 10. Structure the Grounded Prompt with citation instructions
+    // ─── 9. Structure Grounded Prompt with Citations ───
     const systemInstruction = `
       You are a helpful AI assistant.
       Your custom chatbot persona instructions:
       ${chatbot.systemPrompt || 'Answer the user query professionally.'}
       Grounding & Citation Instructions:
       1. You must answer the user's question ONLY using the provided retrieved context and conversation history.
-      2. If the context does not contain the answer, say exactly: "I cannot find the answer in the uploaded documents." Do not make up or hallucinate any facts.
+      2. If the context does not contain the answer, say exactly: "I cannot find the answer in the uploaded documents." Do not try to make up or hallucinate any facts.
       3. Whenever you use facts or statements from a source, cite it inline using bracketed numbers, like [1] or [2].
       4. Always ground your facts directly in the sources provided.
       Retrieved Context:
       ${context}
     `.trim();
 
-    // 11. Prepare Gemini conversation contents with history + current message
+    // ─── 10. Multi-turn generation with Gemini ───
     const formattedHistory = history.map((msg) => ({
       role: msg.role,
       parts: [{ text: msg.content }],
@@ -134,8 +163,6 @@ export const chatService = {
         parts: [{ text: message }],
       },
     ];
-
-    // 12. Request answer generation from Gemini Flash
     console.log(`⏳ Generating grounded response using gemini-3.1-flash-lite...`);
     const model = genAI.getGenerativeModel({
       model: 'gemini-3.1-flash-lite',
@@ -144,10 +171,9 @@ export const chatService = {
     const result = await model.generateContent({ contents });
     const answer = result.response.text();
 
-    // 13. Persist turn into Redis memory
+    // ─── 11. Persist turn into Redis ───
     await memoryService.addTurn(activeSessionId, message, answer);
     console.log(`💾 Saved conversation turn into Redis session: ${activeSessionId}`);
-
     return {
       sessionId: activeSessionId,
       response: answer,

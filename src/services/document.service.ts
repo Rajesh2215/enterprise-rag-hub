@@ -7,6 +7,7 @@ import { cleanExtractedText } from '../utils/textCleaner.js';
 import { chunkText } from '../utils/textChunker.js';
 import { embedChunks } from '../utils/embeddings.js';
 import { getPineconeIndex } from '../config/pinecone.js';
+import { chunkRepo } from '../repositories/chunk.repository.js';
 
 export const documentService = {
   async upload(
@@ -65,6 +66,8 @@ export const documentService = {
       }
     });
 
+    await chunkRepo.deleteByDocument(documentId, chatbotId);
+
     const doc = await documentRepo.findById(documentId, chatbotId);
     if (!doc) throw new Error('Document not found');
 
@@ -104,6 +107,17 @@ export const documentService = {
       // ─── Chunking the cleaned text ───
       const chunks = chunkText(cleanedText, { chunkSize: 500, chunkOverlap: 50 });
       console.log(`Generated ${chunks.length} chunks`);
+
+      // ─── Save chunks to MongoDB for BM25 Sparse Search ───
+      await chunkRepo.insertMany(
+        chunks.map((chunk, index) => ({
+          chatbotId: doc.chatbotId,
+          documentId: doc.id,
+          documentTitle: doc.title,
+          chunkIndex: index,
+          text: chunk,
+        }))
+      );
 
       const embeddings = await embedChunks(chunks);
       console.log(`✅ Generated ${embeddings.length} embeddings.`);
