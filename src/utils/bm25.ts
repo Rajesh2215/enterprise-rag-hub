@@ -5,6 +5,7 @@ export interface BM25Document {
   text: string;
   documentId: string;
   documentTitle: string;
+  parentId?: string | undefined;
   chunkIndex: number;
 }
 
@@ -13,6 +14,7 @@ export interface SearchCandidate {
   text: string;
   documentId: string;
   documentTitle: string;
+  parentId?: string | undefined;
   chunkIndex?: number | undefined;
 }
 

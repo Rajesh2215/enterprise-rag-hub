@@ -4,10 +4,11 @@ import { documentRepo } from '../repositories/document.repository.js';
 import { chatbotRepo } from '../repositories/chatbot.repository.js';
 import { PDFParse } from 'pdf-parse';
 import { cleanExtractedText } from '../utils/textCleaner.js';
-import { chunkText } from '../utils/textChunker.js';
 import { embedChunks } from '../utils/embeddings.js';
 import { getPineconeIndex } from '../config/pinecone.js';
 import { chunkRepo } from '../repositories/chunk.repository.js';
+import { parentChunkRepo } from '../repositories/parentChunk.repository.js';
+import { chunkParentChild } from '../utils/parentChildChunker.js';
 
 export const documentService = {
   async upload(
@@ -34,7 +35,7 @@ export const documentService = {
 
     const filePath = path.join(path.resolve('uploads'), file.filename);
 
-    return documentService.processDocument(doc.id, filePath)
+    return documentService.processDocument(doc.id, filePath);
   },
 
   async getAll(chatbotId: string, userId: string) {
@@ -67,6 +68,7 @@ export const documentService = {
     });
 
     await chunkRepo.deleteByDocument(documentId, chatbotId);
+    await parentChunkRepo.deleteByDocument(documentId, chatbotId);
 
     const doc = await documentRepo.findById(documentId, chatbotId);
     if (!doc) throw new Error('Document not found');
@@ -104,51 +106,62 @@ export const documentService = {
         throw new Error(`Failed to update status for document ${documentId}`);
       }
 
-      // ─── Chunking the cleaned text ───
-      const chunks = chunkText(cleanedText, { chunkSize: 500, chunkOverlap: 50 });
-      console.log(`Generated ${chunks.length} chunks`);
+      // ─── 1. Generate Parent-Child Hierarchy ───
+      const { parents, allChildren } = chunkParentChild(cleanedText, 1500, 150, 300, 50);
+      console.log(`Generated ${parents.length} Parent chunks and ${allChildren.length} Child chunks.`);
 
-      // ─── Save chunks to MongoDB for BM25 Sparse Search ───
-      await chunkRepo.insertMany(
-        chunks.map((chunk, index) => ({
+      // ─── 2. Save Parents to MongoDB ───
+      await parentChunkRepo.insertMany(
+        parents.map((p) => ({
           chatbotId: doc.chatbotId,
           documentId: doc.id,
           documentTitle: doc.title,
-          chunkIndex: index,
-          text: chunk,
+          parentId: p.parentId,
+          parentIndex: p.parentIndex,
+          text: p.text,
         }))
       );
 
-      const embeddings = await embedChunks(chunks);
-      console.log(`✅ Generated ${embeddings.length} embeddings.`);
-      if (embeddings.length > 0) {
-        console.log(`Vector dimension check: ${embeddings[0]?.length} numbers`); // Should print 768!
-      }
+      // ─── 3. Save Child Chunks to MongoDB for BM25 ───
+      await chunkRepo.insertMany(
+        allChildren.map((c) => ({
+          chatbotId: doc.chatbotId,
+          documentId: doc.id,
+          documentTitle: doc.title,
+          parentId: c.parentId,
+          chunkIndex: c.childIndex,
+          text: c.text,
+        }))
+      );
 
-      const vectors = chunks.map((chunk, index) => ({
-        id: `doc_${documentId}_chunk_${index}`, // Unique vector ID
-        values: embeddings[index]!,              // The 768 float array
+      // ─── 4. Embed Child Chunks for High-Precision Pinecone Indexing ───
+      const childTexts = allChildren.map((c) => c.text);
+      const embeddings = await embedChunks(childTexts);
+      console.log(`✅ Generated ${embeddings.length} child embeddings.`);
+
+      const vectors = allChildren.map((child, index) => ({
+        id: `doc_${documentId}_${child.childId}`,
+        values: embeddings[index]!,
         metadata: {
-          text: chunk,
+          text: child.text,
           documentId,
           chatbotId: doc.chatbotId,
           documentTitle: doc.title,
-          chunkIndex: index,
+          parentId: child.parentId,
+          chunkIndex: child.childIndex,
         },
       }));
 
-      // ─── Upsert into Pinecone Namespace ───
-      console.log(`⏳ Storing ${vectors.length} vectors in Pinecone namespace: ${doc.chatbotId}...`);
+      // ─── 5. Upsert Child Vectors into Pinecone Namespace ───
+      console.log(`⏳ Storing ${vectors.length} child vectors in Pinecone namespace: ${doc.chatbotId}...`);
       const index = getPineconeIndex();
       await index.namespace(doc.chatbotId).upsert({ records: vectors });
-
       console.log(`✅ Storing in Pinecone complete.`);
 
-      return doc
+      return doc;
     } catch (error) {
       console.error(`Error processing document ${documentId}:`, error);
       await documentRepo.update(documentId, { status: 'FAILED' });
-
     }
   }
 };

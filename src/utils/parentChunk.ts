@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 
-const chunkSchema = new mongoose.Schema(
+const parentChunkSchema = new mongoose.Schema(
   {
     chatbotId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -15,14 +15,14 @@ const chunkSchema = new mongoose.Schema(
       index: true,
     },
     documentTitle: { type: String, required: true },
-    parentId: { type: String, required: false, index: true },
-    chunkIndex: { type: Number, required: true },
+    parentId: { type: String, required: true, index: true },
+    parentIndex: { type: Number, required: true },
     text: { type: String, required: true },
   },
   { timestamps: true }
 );
 
-// Compound index for fast retrieval per chatbot
-chunkSchema.index({ chatbotId: 1, documentId: 1 });
+parentChunkSchema.index({ chatbotId: 1, documentId: 1, parentId: 1 });
 
-export const ChunkModel = mongoose.model('Chunk', chunkSchema);
+export const ParentChunkModel = mongoose.model('ParentChunk', parentChunkSchema);
+
