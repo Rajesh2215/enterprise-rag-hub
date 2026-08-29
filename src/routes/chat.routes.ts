@@ -14,13 +14,18 @@ router.use(authenticate);
 // POST /api/chatbots/:chatbotId/chat
 router.post('/', (req, res) => chatController.send(req as AuthRequest, res as Response));
 
+// POST /api/chatbots/:chatbotId/chat/stream
+router.post('/stream', (req, res) =>
+  chatController.stream(req as AuthRequest, res as Response)
+);
+
 // GET /api/chatbots/:chatbotId/chat/sessions/:sessionId/history
 router.get('/sessions/:sessionId/history', (req, res) =>
-    chatController.getHistory(req as AuthRequest, res as Response)
+  chatController.getHistory(req as AuthRequest, res as Response)
 );
 // DELETE /api/chatbots/:chatbotId/chat/sessions/:sessionId
 router.delete('/sessions/:sessionId', (req, res) =>
-    chatController.clearHistory(req as AuthRequest, res as Response)
+  chatController.clearHistory(req as AuthRequest, res as Response)
 );
 
 export default router;
