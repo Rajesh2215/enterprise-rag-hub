@@ -21,4 +21,9 @@ npm-debug.log*
 .vscode/
 .idea/
 
-# uploads/
+# Uploads & local test files
+uploads/
+*.pdf
+
+# Local documentation & notes
+docs/
