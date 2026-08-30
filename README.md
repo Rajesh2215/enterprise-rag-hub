@@ -1,6 +1,6 @@
-# Enterprise Knowledge Hub
+# Enterprise RAG Hub
 
-> A production-grade, multi-tenant **Retrieval-Augmented Generation (RAG)** backend engine built with Node.js, TypeScript, Express, MongoDB, Pinecone, and Google Gemini.
+> A production-grade, full-stack **Retrieval-Augmented Generation (RAG)** platform featuring a Node.js/Express backend engine and a modern React web interface.
 
 ---
 
@@ -72,15 +72,26 @@
 
 ---
 
-## 🛠️ Tech Stack
-
-* **Runtime & Framework**: Node.js, TypeScript, Express.js
+* **Backend**: Node.js, TypeScript, Express.js, MongoDB (Mongoose), Redis (ioredis)
+* **Frontend**: React 18, Vite, TypeScript, Tailwind CSS, Redux Toolkit, Axios, Lucide Icons
 * **Vector Database**: Pinecone (Serverless)
-* **Primary Database**: MongoDB (Mongoose)
-* **Caching & Memory**: Redis (ioredis)
-* **LLM & Embeddings**: Google Gemini (`gemini-3.1-flash-lite`, `gemini-embedding-001`)
+* **LLM & Embeddings**: Google Gemini (`gemini-3.1-flash-lite`, `gemini-embedding-001` with MRL 768d)
 * **Reranking**: Cohere Cross-Encoder (`rerank-english-v3.0`)
 * **Validation & Security**: Zod, JWT (Access + Refresh Token), bcryptjs
+
+---
+
+## 🖥️ Full-Stack Web Application
+
+The platform includes a modern, responsive React web interface:
+
+* **Real-Time Streaming Chat**: Typewriter token streaming via SSE with inline source citation cards and confidence badges.
+* **Knowledge Base Management**: Drag-and-drop PDF uploader with live processing state tracking and document deletion.
+* **Chatbot Studio**: Create, edit, and configure custom chatbot personas with tailored system prompts.
+* **Interactive RAG Quality Evaluation**: In-app evaluation modal scoring any response against the RAG Triad with visual progress rings.
+* **Multi-Session History**: Session management with sidebar previews and fast switching.
+* **Dark / Light Mode**: Sleek dark theme by default with seamless light theme toggle.
+
 
 ---
 
