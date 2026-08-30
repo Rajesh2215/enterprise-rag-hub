@@ -12,6 +12,7 @@ import { BM25Index, reciprocalRankFusion, type SearchCandidate } from '../utils/
 import { chunkRepo } from '../repositories/chunk.repository.js';
 import { parentChunkRepo } from '../repositories/parentChunk.repository.js';
 import { expandQuery } from '../utils/queryExpander.js';
+import { classifyIntent } from '../utils/intentRouter.js';
 
 const genAI = new GoogleGenerativeAI(env.GEMINI_API_KEY);
 
@@ -199,6 +200,33 @@ export const chatService = {
     const history = await memoryService.getHistory(activeSessionId);
     const searchQuery = await rewriteQuery(message, history);
 
+    const intent = await classifyIntent(message);
+    if (intent === "CHITCHAT") {
+      console.log(`🚦 [Intent Router] Chitchat detected ("${message}"). Bypassing RAG retrieval.`);
+      const chitchatModel = await genAI.getGenerativeModel({
+        model: 'gemini-3.1-flash-lite',
+        systemInstruction: chatbot.systemPrompt || 'You are a helpful, polite AI assistant'
+      })
+
+      const formattedHistory = history.map((msg) => ({
+        role: msg.role,
+        parts: [{ text: msg.content }]
+      }))
+
+      const result = await chitchatModel.generateContent({
+        contents: [...formattedHistory, { role: 'user', parts: [{ text: message }] }]
+      })
+
+      const answer = result.response.text();
+      await memoryService.addTurn(activeSessionId, message, answer);
+
+      return {
+        sessionId: activeSessionId,
+        response: answer,
+        sources: []
+      }
+    }
+
     // Retrieve & evaluate context through CRAG pipeline
     const { isOutOfScope, context, sources } = await retrieveAndExpandContext(
       chatbotId,
@@ -278,6 +306,38 @@ export const chatService = {
     const history = await memoryService.getHistory(activeSessionId);
     const searchQuery = await rewriteQuery(message, history);
 
+    // ─── INTENT ROUTING FAST-PATH FOR STREAM ───
+    const intent = await classifyIntent(message);
+    if (intent === "CHITCHAT") {
+      console.log(`🚦 [Intent Router Stream] Chitchat detected ("${message}"). Bypassing RAG retrieval.`);
+      yield { type: 'sources', data: { sessionId: activeSessionId, sources: [] } };
+
+      const chitchatModel = await genAI.getGenerativeModel({
+        model: 'gemini-3.1-flash-lite',
+        systemInstruction: chatbot.systemPrompt || 'You are a helpful, polite AI assistant'
+      })
+
+      const formatedHistory = history.map((msg) => ({
+        role: msg.role,
+        parts: [{ text: msg.content }]
+      }))
+
+      const responseStream = await chitchatModel.generateContentStream({
+        contents: [...formatedHistory, { role: 'user', parts: [{ text: message }] }]
+      })
+
+      let fullAnswer = '';
+      for await (const chunk of responseStream.stream) {
+        const token = chunk.text();
+        fullAnswer += token;
+        yield { type: 'token', data: { token } };
+
+      }
+
+      await memoryService.addTurn(activeSessionId, message, fullAnswer);
+      yield { type: 'done', data: { sessionId: activeSessionId } };
+      return;
+    }
     // Retrieve & evaluate context through CRAG pipeline
     const { isOutOfScope, context, sources } = await retrieveAndExpandContext(
       chatbotId,
