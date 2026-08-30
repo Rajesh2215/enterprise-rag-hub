@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { DocumentModel } from '../models/document.js';
 
 export interface DocumentDoc {
@@ -48,11 +49,18 @@ export const documentRepo = {
   },
 
   async findAllByChatbot(chatbotId: string): Promise<DocumentDoc[]> {
+    if (!mongoose.Types.ObjectId.isValid(chatbotId)) return [];
     const docs = await DocumentModel.find({ chatbotId }).sort({ createdAt: -1 });
     return docs.map(toDoc);
   },
 
   async findById(id: string, chatbotId: string): Promise<DocumentDoc | null> {
+    if (
+      !mongoose.Types.ObjectId.isValid(id) ||
+      !mongoose.Types.ObjectId.isValid(chatbotId)
+    ) {
+      return null;
+    }
     const doc = await DocumentModel.findOne({ _id: id, chatbotId });
     return doc ? toDoc(doc) : null;
   },
@@ -61,16 +69,22 @@ export const documentRepo = {
     id: string,
     updateData: { status?: 'PROCESSING' | 'READY' | 'FAILED'; totalPages?: number }
   ): Promise<DocumentDoc | null> {
+    if (!mongoose.Types.ObjectId.isValid(id)) return null;
     const doc = await DocumentModel.findByIdAndUpdate(
       id,
       { $set: updateData },
-      { returnDocument: "after" }
+      { returnDocument: 'after' }
     );
     return doc ? toDoc(doc) : null;
   },
 
-
   async delete(id: string, chatbotId: string): Promise<boolean> {
+    if (
+      !mongoose.Types.ObjectId.isValid(id) ||
+      !mongoose.Types.ObjectId.isValid(chatbotId)
+    ) {
+      return false;
+    }
     const result = await DocumentModel.findOneAndDelete({ _id: id, chatbotId });
     return result !== null;
   },

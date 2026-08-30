@@ -1,4 +1,5 @@
-import { ParentChunkModel } from "../utils/parentChunk.js";
+import mongoose from 'mongoose';
+import { ParentChunkModel } from '../utils/parentChunk.js';
 
 export interface ParentChunkDoc {
   id: string;
@@ -28,6 +29,9 @@ export const parentChunkRepo = {
     chatbotId: string,
     parentIds: string[]
   ): Promise<ParentChunkDoc[]> {
+    if (!mongoose.Types.ObjectId.isValid(chatbotId) || parentIds.length === 0) {
+      return [];
+    }
     const docs = await ParentChunkModel.find({
       chatbotId,
       parentId: { $in: parentIds },
@@ -45,7 +49,12 @@ export const parentChunkRepo = {
   },
 
   async deleteByDocument(documentId: string, chatbotId: string) {
+    if (
+      !mongoose.Types.ObjectId.isValid(documentId) ||
+      !mongoose.Types.ObjectId.isValid(chatbotId)
+    ) {
+      return { deletedCount: 0 };
+    }
     return ParentChunkModel.deleteMany({ documentId, chatbotId });
   },
 };
-

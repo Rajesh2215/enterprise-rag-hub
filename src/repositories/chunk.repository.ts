@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { ChunkModel } from '../models/chunk.js';
 
 export interface ChunkDoc {
@@ -25,6 +26,7 @@ export const chunkRepo = {
   },
 
   async findAllByChatbot(chatbotId: string): Promise<ChunkDoc[]> {
+    if (!mongoose.Types.ObjectId.isValid(chatbotId)) return [];
     const docs = await ChunkModel.find({ chatbotId }).lean();
     return docs.map((d) => ({
       id: d._id.toString(),
@@ -38,6 +40,12 @@ export const chunkRepo = {
   },
 
   async deleteByDocument(documentId: string, chatbotId: string) {
+    if (
+      !mongoose.Types.ObjectId.isValid(documentId) ||
+      !mongoose.Types.ObjectId.isValid(chatbotId)
+    ) {
+      return { deletedCount: 0 };
+    }
     return ChunkModel.deleteMany({ documentId, chatbotId });
   },
 };
